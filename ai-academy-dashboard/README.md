@@ -1,6 +1,23 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
-## Getting Started
+## Get Started
+
+1. **Environment** – Copy `.env.local.example` to `.env.local` and fill in:
+   - `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` from [Supabase](https://supabase.com/dashboard) → your project → **Settings → API**
+   - `SUPABASE_SERVICE_KEY` from the same page (use **service_role** key; keep it server-side only)
+   - `GITHUB_WEBHOOK_SECRET` from GitHub repo → **Settings → Webhooks** → your webhook
+
+2. **Database** – In Supabase → **SQL Editor**, run the schema from the repo root: `../supabase-schema.sql`
+
+3. **Run locally** – From this directory:
+   ```bash
+   npm run dev
+   ```
+   Open [http://localhost:3000](http://localhost:3000).
+
+4. **Deploy to Vercel** – Push to GitHub and [import the project in Vercel](https://vercel.com/new), or use the CLI: `npx vercel`. Add the same env vars in Vercel → Project → **Settings → Environment Variables**.
+
+## Getting Started (dev server)
 
 First, run the development server:
 

@@ -1,13 +1,25 @@
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 
+function getRequiredEnv(name: string): string {
+  const value = process.env[name];
+  if (!value?.trim()) {
+    throw new Error(
+      `Missing env: ${name}. Set it in Vercel → Project → Settings → Environment Variables.`
+    );
+  }
+  return value;
+}
+
 // Server client for server components and API routes
 export async function createServerSupabaseClient() {
   const cookieStore = await cookies();
+  const url = getRequiredEnv('NEXT_PUBLIC_SUPABASE_URL');
+  const anonKey = getRequiredEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY');
 
   return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    url,
+    anonKey,
     {
       cookies: {
         getAll() {

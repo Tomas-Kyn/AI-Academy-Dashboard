@@ -3,36 +3,96 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ActivityFeed } from '@/components/ActivityFeed';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
-import { Trophy, Users, GitCommit, Target, ArrowRight, TrendingUp } from 'lucide-react';
+import { Trophy, Users, GitCommit, Target, ArrowRight, TrendingUp, AlertCircle } from 'lucide-react';
 import type { ActivityLogWithParticipant } from '@/lib/types';
 
 export const revalidate = 0;
 
 export default async function Dashboard() {
-  const supabase = await createServerSupabaseClient();
+  let supabase;
+  try {
+    supabase = await createServerSupabaseClient();
+  } catch (e) {
+    const message = e instanceof Error ? e.message : 'Supabase is not configured.';
+    return (
+      <div className="space-y-6">
+        <h1 className="text-3xl font-bold">AI Academy Dashboard</h1>
+        <Card className="border-amber-500/50 bg-amber-500/10">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
+              <AlertCircle className="h-5 w-5" />
+              Configuration needed
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2 text-sm">
+            <p className="text-muted-foreground">{message}</p>
+            <p>
+              Add <code className="rounded bg-muted px-1">NEXT_PUBLIC_SUPABASE_URL</code>,{' '}
+              <code className="rounded bg-muted px-1">NEXT_PUBLIC_SUPABASE_ANON_KEY</code>, and{' '}
+              <code className="rounded bg-muted px-1">SUPABASE_SERVICE_KEY</code> in Vercel → Project
+              → Settings → Environment Variables, then redeploy.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   // Fetch stats
-  const [participantsResult, submissionsResult, activityResult] = await Promise.all([
-    supabase.from('participants').select('id', { count: 'exact', head: true }),
-    supabase.from('submissions').select('id', { count: 'exact', head: true }),
-    supabase
-      .from('activity_log')
-      .select('*, participants(name, github_username, avatar_url)')
-      .order('created_at', { ascending: false })
-      .limit(10),
-  ]);
+  let participantCount = 0;
+  let submissionCount = 0;
+  let activities: ActivityLogWithParticipant[] = [];
+  let assignmentCount: number | null = 0;
+  let fetchError: string | null = null;
 
-  const participantCount = participantsResult.count ?? 0;
-  const submissionCount = submissionsResult.count ?? 0;
-  const activities = (activityResult.data as ActivityLogWithParticipant[]) ?? [];
+  try {
+    const [participantsResult, submissionsResult, activityResult] = await Promise.all([
+      supabase.from('participants').select('id', { count: 'exact', head: true }),
+      supabase.from('submissions').select('id', { count: 'exact', head: true }),
+      supabase
+        .from('activity_log')
+        .select('*, participants(name, github_username, avatar_url)')
+        .order('created_at', { ascending: false })
+        .limit(10),
+    ]);
 
-  // Calculate completion rate (submissions / (participants * assignments))
-  const { count: assignmentCount } = await supabase
-    .from('assignments')
-    .select('id', { count: 'exact', head: true });
-  
+    participantCount = participantsResult.count ?? 0;
+    submissionCount = submissionsResult.count ?? 0;
+    activities = (activityResult.data as ActivityLogWithParticipant[]) ?? [];
+
+    const result = await supabase
+      .from('assignments')
+      .select('id', { count: 'exact', head: true });
+    assignmentCount = result.count ?? 0;
+  } catch (e) {
+    fetchError = e instanceof Error ? e.message : 'Failed to load data from database.';
+  }
+
   const totalPossible = participantCount * (assignmentCount ?? 0);
   const completionRate = totalPossible > 0 ? Math.round((submissionCount / totalPossible) * 100) : 0;
+
+  if (fetchError) {
+    return (
+      <div className="space-y-6">
+        <h1 className="text-3xl font-bold">AI Academy Dashboard</h1>
+        <Card className="border-amber-500/50 bg-amber-500/10">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
+              <AlertCircle className="h-5 w-5" />
+              Database not ready
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2 text-sm">
+            <p className="text-muted-foreground">{fetchError}</p>
+            <p>
+              Run the schema from <code className="rounded bg-muted px-1">supabase-schema.sql</code> in
+              Supabase → SQL Editor, then refresh.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   const stats = [
     {
