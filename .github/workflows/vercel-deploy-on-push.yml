@@ -1,0 +1,22 @@
+# Triggers a Vercel production deploy when pushing to main.
+# Requires: GitHub repo secret VERCEL_DEPLOY_HOOK = your Vercel Deploy Hook URL
+# (Project → Settings → Git → Deploy Hooks, or already set up by this repo)
+
+name: Vercel Deploy on Push
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  trigger-vercel:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Vercel Deploy
+        run: |
+          if [ -z "${{ secrets.VERCEL_DEPLOY_HOOK }}" ]; then
+            echo "::warning:: VERCEL_DEPLOY_HOOK secret not set. Add it in repo Settings → Secrets → Actions."
+            exit 0
+          fi
+          curl -sS -X POST "${{ secrets.VERCEL_DEPLOY_HOOK }}"
+          echo "Vercel deploy triggered."
