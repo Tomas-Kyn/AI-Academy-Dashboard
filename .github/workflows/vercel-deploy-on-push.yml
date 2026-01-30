@@ -1,6 +1,6 @@
 # On push to main: deploy ai-academy-dashboard to Vercel production via CLI
 # Project has Root Directory = ai-academy-dashboard, so we deploy from repo root.
-# Secret: VERCEL_TOKEN (Vercel API token from vercel.com/account/tokens)
+# Secrets: VERCEL_TOKEN, VERCEL_GIT_EMAIL (Vercel account email – must have team access)
 
 name: Vercel Deploy on Push
 
@@ -14,6 +14,11 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Set Git author for Vercel (must match team member)
+        run: |
+          git config user.email "${{ secrets.VERCEL_GIT_EMAIL }}"
+          git config user.name "Vercel Deploy"
 
       - name: Deploy to Vercel
         env:
