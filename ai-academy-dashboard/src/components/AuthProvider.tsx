@@ -139,20 +139,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     // Get initial session
     const initAuth = async () => {
-      const { data: { session: initialSession } } = await supabase.auth.getSession();
+      try {
+        const { data: { session: initialSession } } = await supabase.auth.getSession();
 
-      if (initialSession) {
-        setSession(initialSession);
-        setUser(initialSession.user);
+        if (initialSession) {
+          setSession(initialSession);
+          setUser(initialSession.user);
 
-        // Fetch participant (works for both GitHub and email users)
-        await fetchParticipant(initialSession.user);
+          // Fetch participant (works for both GitHub and email users)
+          await fetchParticipant(initialSession.user);
 
-        // Also check admin_users table for admin status
-        await checkAdminUser(initialSession.user.id);
+          // Also check admin_users table for admin status
+          await checkAdminUser(initialSession.user.id);
+        }
+      } catch (error) {
+        console.error('Auth initialization error:', error);
+      } finally {
+        setIsLoading(false);
       }
-
-      setIsLoading(false);
     };
 
     initAuth();
@@ -160,19 +164,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, newSession) => {
-        setSession(newSession);
-        setUser(newSession?.user ?? null);
+        try {
+          setSession(newSession);
+          setUser(newSession?.user ?? null);
 
-        if (newSession?.user) {
-          await fetchParticipant(newSession.user);
-          await checkAdminUser(newSession.user.id);
-        } else {
-          setParticipant(null);
-          setIsActualAdmin(false);
-          setUserStatus(null);
+          if (newSession?.user) {
+            await fetchParticipant(newSession.user);
+            await checkAdminUser(newSession.user.id);
+          } else {
+            setParticipant(null);
+            setIsActualAdmin(false);
+            setUserStatus(null);
+          }
+        } catch (error) {
+          console.error('Auth state change error:', error);
+        } finally {
+          setIsLoading(false);
         }
-
-        setIsLoading(false);
       }
     );
 
