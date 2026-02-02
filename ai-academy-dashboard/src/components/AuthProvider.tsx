@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useState, useRef } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { getSupabaseClient } from '@/lib/supabase';
 import type { Participant, UserStatus } from '@/lib/types';
@@ -11,7 +11,7 @@ interface AuthContextType {
   participant: Participant | null;
   isLoading: boolean;
   isAdmin: boolean;
-  isActualAdmin: boolean; // True admin status (not affected by viewAsUser)
+  isActualAdmin: boolean;
   viewAsUser: boolean;
   setViewAsUser: (value: boolean) => void;
   userStatus: UserStatus | 'no_profile' | null;
@@ -46,132 +46,140 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [viewAsUser, setViewAsUser] = useState(false);
   const [userStatus, setUserStatus] = useState<UserStatus | 'no_profile' | null>(null);
 
-  // isAdmin returns false if admin is viewing as user
+  const authInitialized = useRef(false);
   const isAdmin = isActualAdmin && !viewAsUser;
-
   const supabase = getSupabaseClient();
 
-  // Fetch participant by multiple identifiers (email, github_username, or auth_user_id)
-  const fetchParticipant = async (authUser: User) => {
-    let data = null;
-
-    // Try to find by email first (most reliable, always exists)
-    if (authUser.email) {
-      const result = await supabase
-        .from('participants')
-        .select('*')
-        .eq('email', authUser.email)
-        .single();
-      data = result.data;
-    }
-
-    // If not found by email, try by github_username (for GitHub OAuth users)
-    if (!data && authUser.user_metadata?.user_name) {
-      const result = await supabase
-        .from('participants')
-        .select('*')
-        .eq('github_username', authUser.user_metadata.user_name)
-        .single();
-      data = result.data;
-    }
-
-    // Try auth_user_id if column exists (graceful fallback)
-    if (!data) {
-      try {
-        const result = await supabase
+  // Fetch participant with error handling
+  const fetchParticipant = async (authUser: User): Promise<Participant | null> => {
+    try {
+      // Try to find by email first
+      if (authUser.email) {
+        const { data } = await supabase
           .from('participants')
           .select('*')
-          .eq('auth_user_id', authUser.id)
+          .eq('email', authUser.email)
           .single();
-        data = result.data;
-      } catch {
-        // auth_user_id column might not exist yet - ignore error
+        if (data) return data as Participant;
       }
-    }
 
-    // Link auth_user_id if found and not already linked (for migration)
-    if (data && !data.auth_user_id) {
-      try {
-        await supabase
+      // Try by github_username
+      if (authUser.user_metadata?.user_name) {
+        const { data } = await supabase
           .from('participants')
-          .update({ auth_user_id: authUser.id })
-          .eq('id', data.id);
-      } catch {
-        // auth_user_id column might not exist yet - ignore error
+          .select('*')
+          .eq('github_username', authUser.user_metadata.user_name)
+          .single();
+        if (data) return data as Participant;
       }
-    }
 
-    if (data) {
-      setParticipant(data as Participant);
-      // No approval needed - all registered users are approved
-      setUserStatus('approved');
-      setIsActualAdmin((data as Participant).is_admin || false);
-    } else {
-      setParticipant(null);
-      setUserStatus('no_profile');
-      setIsActualAdmin(false);
+      // Try by auth_user_id
+      const { data } = await supabase
+        .from('participants')
+        .select('*')
+        .eq('auth_user_id', authUser.id)
+        .single();
+      if (data) return data as Participant;
+
+      return null;
+    } catch (error) {
+      console.error('fetchParticipant error:', error);
+      return null;
     }
   };
 
-  const checkAdminUser = async (userId: string) => {
-    // Check if user exists in admin_users table
-    const { data } = await supabase
-      .from('admin_users')
-      .select('*')
-      .eq('user_id', userId)
-      .eq('is_active', true)
-      .single();
-
-    if (data) {
-      setIsActualAdmin(true);
-      setUserStatus('approved');
-      return true;
+  // Check admin status
+  const checkAdminUser = async (userId: string): Promise<boolean> => {
+    try {
+      const { data } = await supabase
+        .from('admin_users')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('is_active', true)
+        .single();
+      return !!data;
+    } catch {
+      return false;
     }
-    return false;
   };
 
   const refreshParticipant = async () => {
     if (user) {
-      await fetchParticipant(user);
+      const participantData = await fetchParticipant(user);
+      if (participantData) {
+        setParticipant(participantData);
+        setUserStatus('approved');
+        setIsActualAdmin(participantData.is_admin || false);
+      }
     }
   };
 
   useEffect(() => {
-    // Get initial session - use getUser() to validate with server
+    if (authInitialized.current) return;
+    authInitialized.current = true;
+
+    // Safety timeout - always set isLoading to false after 10 seconds
+    const safetyTimeout = setTimeout(() => {
+      console.warn('Auth initialization timed out');
+      setIsLoading(false);
+    }, 10000);
+
     const initAuth = async () => {
       try {
-        // First get the session (for the session object)
+        // Get session
         const { data: { session: initialSession } } = await supabase.auth.getSession();
 
-        if (initialSession) {
-          // Validate the session with the server using getUser()
-          const { data: { user: validatedUser }, error } = await supabase.auth.getUser();
-
-          if (error || !validatedUser) {
-            // Session is invalid, clear it
-            console.log('Session invalid, clearing auth state');
-            setSession(null);
-            setUser(null);
-            setParticipant(null);
-            setIsActualAdmin(false);
-            setUserStatus(null);
-            setIsLoading(false);
-            return;
-          }
-
-          setSession(initialSession);
-          setUser(validatedUser);
-
-          // Fetch participant (works for both GitHub and email users)
-          await fetchParticipant(validatedUser);
-
-          // Also check admin_users table for admin status
-          await checkAdminUser(validatedUser.id);
+        if (!initialSession) {
+          setIsLoading(false);
+          clearTimeout(safetyTimeout);
+          return;
         }
+
+        // Validate session
+        const { data: { user: validatedUser }, error } = await supabase.auth.getUser();
+
+        if (error || !validatedUser) {
+          console.log('Session validation failed:', error?.message);
+          setIsLoading(false);
+          clearTimeout(safetyTimeout);
+          return;
+        }
+
+        setSession(initialSession);
+        setUser(validatedUser);
+
+        // Fetch participant
+        const participantData = await fetchParticipant(validatedUser);
+
+        if (participantData) {
+          setParticipant(participantData);
+          setUserStatus('approved');
+          setIsActualAdmin(participantData.is_admin || false);
+
+          // Link auth_user_id if needed
+          if (!participantData.auth_user_id) {
+            supabase
+              .from('participants')
+              .update({ auth_user_id: validatedUser.id })
+              .eq('id', participantData.id)
+              .then(() => {});
+          }
+        } else {
+          setUserStatus('no_profile');
+        }
+
+        // Check admin_users table
+        const isAdminUser = await checkAdminUser(validatedUser.id);
+        if (isAdminUser) {
+          setIsActualAdmin(true);
+          setUserStatus('approved');
+        }
+
       } catch (error) {
         console.error('Auth initialization error:', error);
       } finally {
         setIsLoading(false);
+        clearTimeout(safetyTimeout);
       }
     };
 
@@ -180,27 +188,43 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, newSession) => {
-        try {
-          setSession(newSession);
-          setUser(newSession?.user ?? null);
+        if (event === 'SIGNED_OUT') {
+          setSession(null);
+          setUser(null);
+          setParticipant(null);
+          setIsActualAdmin(false);
+          setUserStatus(null);
+          return;
+        }
 
-          if (newSession?.user) {
-            await fetchParticipant(newSession.user);
-            await checkAdminUser(newSession.user.id);
-          } else {
-            setParticipant(null);
-            setIsActualAdmin(false);
-            setUserStatus(null);
+        if (event === 'SIGNED_IN' && newSession?.user) {
+          setSession(newSession);
+          setUser(newSession.user);
+
+          try {
+            const participantData = await fetchParticipant(newSession.user);
+            if (participantData) {
+              setParticipant(participantData);
+              setUserStatus('approved');
+              setIsActualAdmin(participantData.is_admin || false);
+            } else {
+              setUserStatus('no_profile');
+            }
+
+            const isAdminUser = await checkAdminUser(newSession.user.id);
+            if (isAdminUser) {
+              setIsActualAdmin(true);
+              setUserStatus('approved');
+            }
+          } catch (error) {
+            console.error('Auth state change error:', error);
           }
-        } catch (error) {
-          console.error('Auth state change error:', error);
-        } finally {
-          setIsLoading(false);
         }
       }
     );
 
     return () => {
+      clearTimeout(safetyTimeout);
       subscription.unsubscribe();
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -216,10 +240,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const signInWithEmail = async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
     return { error: error as Error | null };
   };
 

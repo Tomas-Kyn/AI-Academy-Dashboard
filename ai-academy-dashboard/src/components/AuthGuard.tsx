@@ -29,7 +29,6 @@ const AUTH_ONLY_ROUTES = [
 // Routes that require admin access
 const ADMIN_ROUTES = [
   '/admin',
-  '/admin/users',
 ];
 
 interface AuthGuardProps {
@@ -37,46 +36,46 @@ interface AuthGuardProps {
 }
 
 export function AuthGuard({ children }: AuthGuardProps) {
-  const { user, isLoading, isAdmin, userStatus, participant } = useAuth();
+  const { user, isLoading, isAdmin, userStatus } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
 
-  // Calculate route types once
+  // Calculate route types
   const isPublicRoute = PUBLIC_ROUTES.includes(pathname) ||
     PUBLIC_PREFIXES.some(prefix => pathname.startsWith(prefix));
   const isAuthOnlyRoute = AUTH_ONLY_ROUTES.some(route => pathname.startsWith(route));
   const isAdminRoute = ADMIN_ROUTES.some(route => pathname.startsWith(route));
 
   useEffect(() => {
-    // For public routes, no redirect logic needed
+    // Public routes - no redirect needed
     if (isPublicRoute) return;
 
+    // Still loading - wait
     if (isLoading) return;
 
-    // Not logged in
+    // Not logged in - redirect to login
     if (!user) {
       router.push('/login');
       return;
     }
 
-    // Logged in but checking status...
+    // Logged in - handle redirects based on status
 
-    // Admin routes - require admin status
+    // Admin routes require admin
     if (isAdminRoute && !isAdmin) {
       router.push('/');
       return;
     }
 
-    // User is admin - allow everywhere
+    // Admin can access everything
     if (isAdmin) {
-      // If admin is on pending page, redirect to admin panel
       if (pathname === '/pending') {
         router.push('/admin/users');
       }
       return;
     }
 
-    // User has no profile yet - send to onboarding
+    // User has no profile - send to onboarding
     if (userStatus === 'no_profile') {
       if (pathname !== '/onboarding') {
         router.push('/onboarding');
@@ -100,21 +99,22 @@ export function AuthGuard({ children }: AuthGuardProps) {
       return;
     }
 
-    // User is approved - if on login/pending page, redirect to dashboard
+    // User is approved - redirect away from login/pending
     if (userStatus === 'approved') {
       if (pathname === '/login' || pathname === '/pending') {
         router.push('/my-dashboard');
       }
-      return;
     }
-  }, [user, isLoading, isAdmin, userStatus, pathname, router, participant, isPublicRoute, isAuthOnlyRoute, isAdminRoute]);
+  }, [user, isLoading, isAdmin, userStatus, pathname, router, isPublicRoute, isAuthOnlyRoute, isAdminRoute]);
 
-  // PUBLIC ROUTES: Render immediately without waiting for auth
+  // === RENDER LOGIC ===
+
+  // Public routes render immediately
   if (isPublicRoute) {
     return <>{children}</>;
   }
 
-  // Show loading state for protected routes
+  // Loading state
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -130,30 +130,42 @@ export function AuthGuard({ children }: AuthGuardProps) {
   if (!user) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-[#0062FF]" />
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="h-8 w-8 animate-spin text-[#0062FF]" />
+          <p className="text-muted-foreground">Redirecting to login...</p>
+        </div>
       </div>
     );
   }
 
-  // Admin routes require admin
+  // Admin routes require admin status
   if (isAdminRoute && !isAdmin) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-[#0062FF]" />
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="h-8 w-8 animate-spin text-[#0062FF]" />
+          <p className="text-muted-foreground">Checking permissions...</p>
+        </div>
       </div>
     );
   }
 
-  // Pending/rejected users can only access auth-only routes
+  // Users without proper status can only access auth-only routes
   if (!isAdmin && (userStatus === 'pending' || userStatus === 'rejected' || userStatus === 'no_profile')) {
     if (!isAuthOnlyRoute) {
       return (
         <div className="min-h-screen flex items-center justify-center">
-          <Loader2 className="h-8 w-8 animate-spin text-[#0062FF]" />
+          <div className="flex flex-col items-center gap-4">
+            <Loader2 className="h-8 w-8 animate-spin text-[#0062FF]" />
+            <p className="text-muted-foreground">
+              {userStatus === 'no_profile' ? 'Setting up your profile...' : 'Checking status...'}
+            </p>
+          </div>
         </div>
       );
     }
   }
 
+  // All checks passed - render content
   return <>{children}</>;
 }
