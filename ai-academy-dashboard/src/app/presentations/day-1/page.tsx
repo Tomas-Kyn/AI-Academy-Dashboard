@@ -757,7 +757,7 @@ Explain AI agents in **3 paragraphs**:
         className="min-h-screen flex flex-col justify-center px-8 py-24"
       >
         <div className="max-w-[1400px] mx-auto w-full">
-          <SectionHeader number="09" title="Generative AI Project Structure" subtitle="Standard folder organization for production AI projects" />
+          <SectionHeader number="09" title="Kyndryl Generative AI Project Structure" subtitle="Standard folder organization for production AI projects" />
 
           <div className="grid lg:grid-cols-2 gap-8">
             {/* Folder Tree */}
@@ -795,6 +795,7 @@ Explain AI agents in **3 paragraphs**:
                     <FileItem name="chunking.py" indent={3} />
                     <FileItem name="cleaner.py" indent={3} />
                     <FileItem name="preprocessor.py" indent={3} />
+                    <FileItem name="postprocessor.py" indent={3} />
                   </FolderItem>
                   <FolderItem name="inference/" indent={2} color={colors.accentOrange}>
                     <FileItem name="inference.py" indent={3} />
@@ -862,18 +863,19 @@ Explain AI agents in **3 paragraphs**:
                 intro="Retrieval-Augmented Generation components"
                 items={[
                   { file: 'embedder.py', desc: 'Embedding generation' },
-                  { file: 'generate.py', desc: 'RAG response generation' },
+                  { file: 'generate.py', desc: 'Document indexer' },
                   { file: 'vector_store.py', desc: 'Vector DB retrieval' },
-                  { file: 'indexer.py', desc: 'Document indexing pipeline' },
+                  { file: 'indexer.py', desc: 'Relevance scoring and metadata' },
                 ]}
               />
               <FolderExplanation
                 name="src/processing/"
                 color={colors.accentPink}
                 items={[
-                  { file: 'chunking.py', desc: 'Text splitting strategies' },
-                  { file: 'cleaner.py', desc: 'Text cleaning & extraction' },
-                  { file: 'preprocessor.py', desc: 'Input normalization' },
+                  { file: 'chunking.py', desc: 'Text splitting' },
+                  { file: 'cleaner.py', desc: 'Text extraction and cleaning' },
+                  { file: 'preprocessor.py', desc: 'Data normalization' },
+                  { file: 'postprocessor.py', desc: 'Output formatting' },
                 ]}
               />
               <FolderExplanation
